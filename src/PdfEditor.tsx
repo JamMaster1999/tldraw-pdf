@@ -1,4 +1,4 @@
-import { useMemo, useCallback, useState, useEffect } from 'react';
+import { useMemo, useCallback, useState, useEffect, useRef } from 'react';
 import {
   Box,
   SVGContainer,
@@ -15,14 +15,13 @@ import {
   loadSnapshot,
   TLAssetStore,
 } from 'tldraw';
-import { Pdf } from './PdfPicker';
+import { Pdf, PdfPage } from './PdfPicker';
 
 interface PdfEditorProps {
   type: 'pdf' | 'whiteboard';
   pdf?: Pdf;
   path?: string;
   state_url?: string;
-  onRequestNewUrls?: () => void;  // Callback to request new URLs
 }
 
 // Helper function to ensure shapes are below other shapes
@@ -81,16 +80,14 @@ function updateCameraBounds(editor: any, targetBounds: Box, isMobile: boolean) {
   editor.setCamera(editor.getCamera(), { reset: true });
 }
 
-// Simplified asset store that handles URL updates
-const createAssetStore = (urlMap: Map<string, string>): TLAssetStore => ({
+// Simplified asset store that just returns the URL
+const createAssetStore = (): TLAssetStore => ({
   async upload(asset, file) {
     throw new Error('Upload not implemented');
   },
 
   resolve(asset) {
-    if (!asset.props.src) return '';
-    // Return the current signed URL for this pageId if available
-    return urlMap.get(asset.props.src) || asset.props.src;
+    return asset.props.src || '';
   },
 });
 
@@ -185,46 +182,9 @@ const SaveDrawingsButton = track(function SaveDrawingsButton({ path }: { path?: 
   );
 });
 
-export function PdfEditor({ type, pdf, path, state_url, onRequestNewUrls }: PdfEditorProps) {
-  // Track current URLs for each page
-  const [urlMap, setUrlMap] = useState(() => new Map<string, string>());
-  
-  // Update URL mapping when pdf changes
-  useEffect(() => {
-    if (pdf?.pages) {
-      const newMap = new Map<string, string>();
-      pdf.pages.forEach(page => {
-        // Store mapping from pageId to URL
-        if (page.pageId && page.src) {
-          newMap.set(page.pageId, page.src);
-        }
-      });
-      setUrlMap(newMap);
-    }
-  }, [pdf]);
-
-  // Set up URL refresh interval
-  useEffect(() => {
-    if (!onRequestNewUrls) return;
-    
-    // Refresh URLs every 4 minutes (signed URLs expire in 5 minutes)
-    const interval = setInterval(() => {
-      onRequestNewUrls();
-    }, 4 * 60 * 1000);
-
-    return () => clearInterval(interval);
-  }, [onRequestNewUrls]);
-
-  // Create memoized asset store with current URL mapping
-  const assetStore = useMemo(() => createAssetStore(urlMap), [urlMap]);
-
+export function PdfEditor({ type, pdf, path, state_url }: PdfEditorProps) {
   // Add immediate debug log when component renders
   console.log('PdfEditor rendered with props:', { type, path, state_url, hasPdf: !!pdf });
-
-  // Add effect to log when props change
-  useEffect(() => {
-    console.log('PdfEditor props changed:', { type, path, state_url, hasPdf: !!pdf });
-  }, [type, path, state_url, pdf]);
 
   const components = useMemo<TLComponents>(
     () => ({
@@ -305,7 +265,7 @@ export function PdfEditor({ type, pdf, path, state_url, onRequestNewUrls }: PdfE
         components={components}
         autoFocus
         inferDarkMode={true}
-        assets={assetStore}
+        assets={createAssetStore()}
         onMount={(editor) => {
           // Set up autosave only for whiteboard mode
           if (type === 'whiteboard') {
@@ -330,7 +290,7 @@ export function PdfEditor({ type, pdf, path, state_url, onRequestNewUrls }: PdfE
                       w: page.bounds.w,
                       h: page.bounds.h,
                       mimeType: 'image/webp',
-                      src: page.pageId || `page-${page.shapeId}`, // Ensure we always have a src
+                      src: page.src,
                       name: 'page',
                       isAnimated: false,
                     },
