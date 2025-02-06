@@ -46,7 +46,6 @@ const createAssetStore = (): TLAssetStore => ({
 });
 
 export function PdfEditor({ type, pdf, path }: PdfEditorProps) {
-  const [isInitialized, setIsInitialized] = useState(false);
   const pathRef = useRef(path);
 
   // Update pathRef when path changes
@@ -153,7 +152,6 @@ export function PdfEditor({ type, pdf, path }: PdfEditorProps) {
                     const state = await response.json();
                     loadSnapshot(editor.store, state);
                     console.log('Initial state loaded successfully');
-                    setIsInitialized(true);
                   } else {
                     console.warn('Failed to load state, proceeding with PDF setup');
                   }
