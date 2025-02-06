@@ -3,6 +3,7 @@ import { AssetRecordType, Box, TLAssetId, TLShapeId, createShapeId } from 'tldra
 import tldrawPdf from './assets/tldraw.pdf';
 
 export interface PdfPage {
+  pageId: string;
   src: string;
   bounds: Box;
   assetId: TLAssetId;
@@ -52,6 +53,7 @@ export function PdfPicker({ onOpenPdf }: { onOpenPdf(pdf: Pdf): void }) {
       const width = viewport.width / scale;
       const height = viewport.height / scale;
       pages.push({
+        pageId: i.toString(),
         src: canvas.toDataURL(),
         bounds: new Box(0, top, width, height),
         assetId: AssetRecordType.createId(),

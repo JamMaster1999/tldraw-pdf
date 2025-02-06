@@ -22,6 +22,7 @@ interface PdfEditorProps {
   pdf?: Pdf;
   path?: string;
   state_url?: string;
+  onRequestNewUrls?: () => void;  // Callback to request new URLs
 }
 
 // Helper function to ensure shapes are below other shapes
@@ -80,14 +81,17 @@ function updateCameraBounds(editor: any, targetBounds: Box, isMobile: boolean) {
   editor.setCamera(editor.getCamera(), { reset: true });
 }
 
-// Simplified asset store that just returns the URL directly
-const createAssetStore = (): TLAssetStore => ({
+// Simplified asset store that handles URL updates
+const createAssetStore = (urlMap: Map<string, string>): TLAssetStore => ({
   async upload(asset, file) {
     throw new Error('Upload not implemented');
   },
 
   resolve(asset) {
-    return asset.props.src;
+    // The src in the asset should be the pageId
+    const src = asset.props.src || '';
+    // Return the current signed URL for this pageId if available
+    return urlMap.get(src) || src;
   },
 });
 
@@ -182,9 +186,36 @@ const SaveDrawingsButton = track(function SaveDrawingsButton({ path }: { path?: 
   );
 });
 
-export function PdfEditor({ type, pdf, path, state_url }: PdfEditorProps) {
-  // Create memoized asset store
-  const assetStore = useMemo(() => createAssetStore(), []);
+export function PdfEditor({ type, pdf, path, state_url, onRequestNewUrls }: PdfEditorProps) {
+  // Track current URLs for each page
+  const [urlMap, setUrlMap] = useState(() => new Map<string, string>());
+  
+  // Update URL mapping when pdf changes
+  useEffect(() => {
+    if (pdf?.pages) {
+      const newMap = new Map<string, string>();
+      pdf.pages.forEach(page => {
+        // Store mapping from pageId to URL
+        newMap.set(page.pageId, page.src);
+      });
+      setUrlMap(newMap);
+    }
+  }, [pdf]);
+
+  // Set up URL refresh interval
+  useEffect(() => {
+    if (!onRequestNewUrls) return;
+    
+    // Refresh URLs every 4 minutes (signed URLs expire in 5 minutes)
+    const interval = setInterval(() => {
+      onRequestNewUrls();
+    }, 4 * 60 * 1000);
+
+    return () => clearInterval(interval);
+  }, [onRequestNewUrls]);
+
+  // Create memoized asset store with current URL mapping
+  const assetStore = useMemo(() => createAssetStore(urlMap), [urlMap]);
 
   // Add immediate debug log when component renders
   console.log('PdfEditor rendered with props:', { type, path, state_url, hasPdf: !!pdf });
@@ -297,8 +328,8 @@ export function PdfEditor({ type, pdf, path, state_url }: PdfEditorProps) {
                     props: {
                       w: page.bounds.w,
                       h: page.bounds.h,
-                      mimeType: 'image/png',
-                      src: page.src, // This will now be a URL instead of base64
+                      mimeType: 'image/webp',
+                      src: page.pageId,  // Use pageId instead of URL
                       name: 'page',
                       isAnimated: false,
                     },
