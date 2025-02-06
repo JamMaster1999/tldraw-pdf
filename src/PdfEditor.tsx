@@ -192,14 +192,17 @@ export function PdfEditor({ type, pdf, path }: PdfEditorProps) {
             });
             
             const stateStr = JSON.stringify(currentState);
+            const file = new File([stateStr], 'state.json', { type: 'application/json' });
+            
+            const formData = new FormData();
+            formData.append('path', path);
+            formData.append('file', file);
+            formData.append('bucket', 'uflo-screenshots');
             
             console.log('Making upload request...');
-            const response = await fetch(path, {
-              method: 'PUT',
-              body: stateStr,
-              headers: {
-                'Content-Type': 'application/json',
-              }
+            const response = await fetch('https://xh9i-rdvs-rnon.n7c.xano.io/api:viyKJkUs/upload', {
+              method: 'POST',
+              body: formData
             });
             
             if (!response.ok) {
