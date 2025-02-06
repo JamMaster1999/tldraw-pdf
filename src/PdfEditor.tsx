@@ -195,7 +195,7 @@ export function PdfEditor({ type, pdf, path }: PdfEditorProps) {
             const file = new File([stateStr], 'state.json', { type: 'application/json' });
             
             const formData = new FormData();
-            formData.append('path', path);
+            formData.append('path', path.replace('https://uflo-screenshots.s3.us-west-1.amazonaws.com/', ''));
             formData.append('file', file);
             formData.append('bucket', 'uflo-screenshots');
             
