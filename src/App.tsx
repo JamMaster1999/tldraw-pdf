@@ -21,65 +21,59 @@ type State =
       phase: 'edit';
       config: EditorConfig;
       pdf?: Pdf;
-      signed_url?: string;
+      state_url?: string;
     };
+
+interface PageImage {
+  url: string;
+  expires_at: number;
+}
 
 const pageSpacing = 32;
 
-async function initializePdf(name: string, source: ArrayBuffer): Promise<Pdf> {
-  const PdfJS = await import('pdfjs-dist');
-  PdfJS.GlobalWorkerOptions.workerSrc = new URL(
-    'pdfjs-dist/build/pdf.worker.min.mjs',
-    import.meta.url
-  ).toString();
-  
-  const pdf = await PdfJS.getDocument(source.slice(0)).promise;
+// Initialize from pre-rendered page images
+async function initializeFromPageImages(pageImages: PageImage[]): Promise<Pdf> {
   const pages: PdfPage[] = [];
-
-  const canvas = window.document.createElement('canvas');
-  const context = canvas.getContext('2d');
-  if (!context) throw new Error('Failed to create canvas context');
-
-  const visualScale = 1.5;
-  const scale = window.devicePixelRatio;
-
   let top = 0;
   let widest = 0;
-  
-  for (let i = 1; i <= pdf.numPages; i++) {
-    const page = await pdf.getPage(i);
-    const viewport = page.getViewport({ scale: scale * visualScale });
-    canvas.width = viewport.width;
-    canvas.height = viewport.height;
-    const renderContext = {
-      canvasContext: context,
-      viewport,
-    };
-    await page.render(renderContext).promise;
 
-    const width = viewport.width / scale;
-    const height = viewport.height / scale;
+  // Create a temporary image to get dimensions
+  const img = new Image();
+  const loadImage = (url: string): Promise<HTMLImageElement> => {
+    return new Promise((resolve, reject) => {
+      img.onload = () => resolve(img);
+      img.onerror = reject;
+      img.src = url;
+    });
+  };
+
+  for (let i = 0; i < pageImages.length; i++) {
+    const pageImage = pageImages[i];
+    await loadImage(pageImage.url);
+    
+    const width = img.width;
+    const height = img.height;
+    
     pages.push({
-      src: canvas.toDataURL(),
+      src: pageImage.url,
       bounds: new Box(0, top, width, height),
       assetId: AssetRecordType.createId(),
       shapeId: createShapeId(),
     });
+    
     top += height + pageSpacing;
     widest = Math.max(widest, width);
   }
-  
-  canvas.width = 0;
-  canvas.height = 0;
 
+  // Center all pages horizontally
   for (const page of pages) {
     page.bounds.x = (widest - page.bounds.width) / 2;
   }
 
   return {
-    name,
+    name: 'document.pdf',
     pages,
-    source,
+    source: new ArrayBuffer(0), // We don't need the source anymore
   };
 }
 
@@ -90,47 +84,28 @@ export default function PdfEditorWrapper() {
     // Listen for messages from parent window
     const handleMessage = async (event: MessageEvent) => {
       console.log('Received message:', event.data);  // Debug log
-      const { type, pdf_url, path, signed_url } = event.data;
+      const { type, page_images, path, state_url } = event.data;
       
-      if (type === 'pdf' && pdf_url) {
+      if (type === 'pdf' && Array.isArray(page_images)) {
         try {
-          let pdfArrayBuffer;
-          
-          // Check if pdf_url is a base64 string
-          if (pdf_url.startsWith('data:application/pdf;base64,')) {
-            // Convert base64 to ArrayBuffer
-            const base64 = pdf_url.split(',')[1];
-            const binaryString = window.atob(base64);
-            const bytes = new Uint8Array(binaryString.length);
-            for (let i = 0; i < binaryString.length; i++) {
-              bytes[i] = binaryString.charCodeAt(i);
-            }
-            pdfArrayBuffer = bytes.buffer;
-          } else {
-            // Handle URL case (fallback)
-            const response = await fetch(pdf_url);
-            pdfArrayBuffer = await response.arrayBuffer();
-          }
-
-          // Initialize PDF with pages
-          console.log('Initializing PDF...');
-          const pdf = await initializePdf('document.pdf', pdfArrayBuffer);
+          console.log('Initializing from page images...');
+          const pdf = await initializeFromPageImages(page_images);
           console.log('PDF initialized with', pdf.pages.length, 'pages');
 
-          console.log('Setting state with:', { type, path, signed_url });
           setState({
             phase: 'edit',
-            config: { type, pdfUrl: pdf_url, path },
+            config: { type, path },
             pdf,
-            signed_url
+            state_url
           });
         } catch (error) {
-          console.error('Failed to load PDF:', error);
+          console.error('Failed to load page images:', error);
         }
       } else if (type === 'whiteboard') {
         setState({
           phase: 'edit',
-          config: { type, path }
+          config: { type, path },
+          state_url
         });
       }
     };
@@ -155,7 +130,7 @@ export default function PdfEditorWrapper() {
         type={state.config.type} 
         pdf={state.pdf} 
         path={state.config.path}
-        signed_url={state.signed_url}  // Pass the signed_url to PdfEditor
+        state_url={state.state_url}
       />
     </div>
   );

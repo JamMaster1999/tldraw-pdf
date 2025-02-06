@@ -13,6 +13,7 @@ import {
   getSnapshot,
   useEditor,
   loadSnapshot,
+  TLAssetStore,
 } from 'tldraw';
 import { Pdf } from './PdfPicker';
 
@@ -20,7 +21,7 @@ interface PdfEditorProps {
   type: 'pdf' | 'whiteboard';
   pdf?: Pdf;
   path?: string;
-  signed_url?: string;
+  state_url?: string;
 }
 
 // Helper function to ensure shapes are below other shapes
@@ -78,6 +79,17 @@ function updateCameraBounds(editor: any, targetBounds: Box, isMobile: boolean) {
   });
   editor.setCamera(editor.getCamera(), { reset: true });
 }
+
+// Simplified asset store that just returns the URL directly
+const createAssetStore = (): TLAssetStore => ({
+  async upload(asset, file) {
+    throw new Error('Upload not implemented');
+  },
+
+  resolve(asset) {
+    return asset.props.src;
+  },
+});
 
 const SaveDrawingsButton = track(function SaveDrawingsButton({ path }: { path?: string }) {
   const editor = useEditor();
@@ -170,14 +182,17 @@ const SaveDrawingsButton = track(function SaveDrawingsButton({ path }: { path?: 
   );
 });
 
-export function PdfEditor({ type, pdf, path, signed_url }: PdfEditorProps) {
+export function PdfEditor({ type, pdf, path, state_url }: PdfEditorProps) {
+  // Create memoized asset store
+  const assetStore = useMemo(() => createAssetStore(), []);
+
   // Add immediate debug log when component renders
-  console.log('PdfEditor rendered with props:', { type, path, signed_url, hasPdf: !!pdf });
+  console.log('PdfEditor rendered with props:', { type, path, state_url, hasPdf: !!pdf });
 
   // Add effect to log when props change
   useEffect(() => {
-    console.log('PdfEditor props changed:', { type, path, signed_url, hasPdf: !!pdf });
-  }, [type, path, signed_url, pdf]);
+    console.log('PdfEditor props changed:', { type, path, state_url, hasPdf: !!pdf });
+  }, [type, path, state_url, pdf]);
 
   const components = useMemo<TLComponents>(
     () => ({
@@ -200,9 +215,9 @@ export function PdfEditor({ type, pdf, path, signed_url }: PdfEditorProps) {
   }, [type]);
 
   const loadPreviousDrawings = useCallback(async (editor: any) => {
-    console.log('loadPreviousDrawings called with signed_url:', typeof signed_url);
+    console.log('loadPreviousDrawings called with state_url:', typeof state_url);
     
-    if (!signed_url) {
+    if (!state_url) {
       console.log('No drawings data provided');
       return;
     }
@@ -210,16 +225,16 @@ export function PdfEditor({ type, pdf, path, signed_url }: PdfEditorProps) {
     try {
       let drawingsData;
       
-      if (signed_url.startsWith('data:')) {
+      if (state_url.startsWith('data:')) {
         // Handle base64 data directly
         console.log('Processing base64 drawings data');
-        const base64Data = signed_url.split(',')[1];
+        const base64Data = state_url.split(',')[1];
         const jsonStr = atob(base64Data);
         drawingsData = JSON.parse(jsonStr);
       } else {
         // Fallback to URL fetch
-        console.log('Fetching drawings from URL:', signed_url);
-        const response = await fetch(signed_url, {
+        console.log('Fetching drawings from URL:', state_url);
+        const response = await fetch(state_url, {
           method: 'GET',
           headers: {
             'Accept': 'application/json'
@@ -250,7 +265,7 @@ export function PdfEditor({ type, pdf, path, signed_url }: PdfEditorProps) {
     } catch (error) {
       console.error('Error loading previous drawings:', error);
     }
-  }, [signed_url]);
+  }, [state_url]);
 
   return (
     <div className="editor">
@@ -258,6 +273,7 @@ export function PdfEditor({ type, pdf, path, signed_url }: PdfEditorProps) {
         components={components}
         autoFocus
         inferDarkMode={true}
+        assets={assetStore}
         onMount={(editor) => {
           // Set up autosave only for whiteboard mode
           if (type === 'whiteboard') {
@@ -282,7 +298,7 @@ export function PdfEditor({ type, pdf, path, signed_url }: PdfEditorProps) {
                       w: page.bounds.w,
                       h: page.bounds.h,
                       mimeType: 'image/png',
-                      src: page.src,
+                      src: page.src, // This will now be a URL instead of base64
                       name: 'page',
                       isAnimated: false,
                     },
