@@ -198,6 +198,9 @@ export function PdfEditor({ type, pdf, path }: PdfEditorProps) {
                       x: page.bounds.x,
                       y: page.bounds.y,
                       isLocked: true,
+                      meta: {
+                        preventBounding: true,
+                      },
                       props: {
                         assetId: page.assetId,
                         w: page.bounds.w,
@@ -206,6 +209,12 @@ export function PdfEditor({ type, pdf, path }: PdfEditorProps) {
                     }))
                   ),
                 ]);
+
+                // Send PDF pages to back
+                const pdfShapes = editor.getCurrentPageShapes().filter(shape => 
+                  pdf.pages.some(page => page.shapeId === shape.id)
+                );
+                editor.sendToBack(pdfShapes);
 
                 // Set up camera
                 const targetBounds = pdf.pages.reduce(
