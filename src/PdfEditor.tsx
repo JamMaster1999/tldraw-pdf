@@ -299,7 +299,26 @@ export function PdfEditor({ type, pdf, path }: PdfEditorProps) {
 
           // Handle async initialization
           (async () => {
-            // If we have a PDF, set it up
+            // First load initial state if available
+            if (path && !isInitialized) {
+              try {
+                console.log('Loading initial state from:', path);
+                const response = await fetch(path);
+                if (!response.ok) {
+                  throw new Error(`Failed to load state: ${response.status} ${response.statusText}`);
+                }
+                
+                const state = await response.json();
+                loadSnapshot(editor.store, state);
+                console.log('Initial state loaded successfully');
+              } catch (error) {
+                console.error('Failed to load initial state:', error);
+              } finally {
+                setIsInitialized(true);
+              }
+            }
+
+            // Then set up PDF if we have one
             if (pdf && pdf.pages.length > 0) {
               await Promise.all([
                 // Create assets
@@ -371,25 +390,6 @@ export function PdfEditor({ type, pdf, path }: PdfEditorProps) {
                 isMobile = isMobileNow;
                 updateCameraBounds(editor, targetBounds, isMobile);
               });
-            }
-
-            // Load initial state if available
-            if (path && !isInitialized) {
-              try {
-                console.log('Loading initial state from:', path);
-                const response = await fetch(path);
-                if (!response.ok) {
-                  throw new Error(`Failed to load state: ${response.status} ${response.statusText}`);
-                }
-                
-                const state = await response.json();
-                loadSnapshot(editor.store, state);
-                console.log('Initial state loaded successfully');
-              } catch (error) {
-                console.error('Failed to load initial state:', error);
-              } finally {
-                setIsInitialized(true);
-              }
             }
 
             // Notify parent that everything is loaded
