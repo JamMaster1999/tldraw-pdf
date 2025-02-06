@@ -97,26 +97,30 @@ export function PdfEditor({ type, pdf, path, state_url }: PdfEditorProps) {
 
   // Track changes
   const handleChange = useCallback((editor: any) => {
-    console.log('handleChange called');
+    console.log('🔄 handleChange called with editor:', editor ? 'editor present' : 'no editor');
     setCountdown(10); // Start countdown from 10 seconds
   }, []);
 
   // Auto-save effect
   useEffect(() => {
-    if (!path || !saveRef.current) return;
+    console.log('⏰ Auto-save effect triggered with countdown:', countdown, 'path:', path);
+    if (!path || !saveRef.current) {
+      console.log('❌ Skipping auto-save: no path or saveRef');
+      return;
+    }
 
     const checkAndSave = async () => {
       if (countdown === 0) {
-        console.log('Countdown reached 0, saving...');
+        console.log('💾 Starting save operation...');
         try {
           const save = saveRef.current;
           if (save) {
             await save();
-            console.log('Auto-save completed successfully');
+            console.log('✅ Auto-save completed successfully');
             setCountdown(null); // Reset countdown after successful save
           }
         } catch (error) {
-          console.error('Auto-save failed:', error);
+          console.error('❌ Auto-save failed:', error);
           setCountdown(10); // Retry in 10 seconds if save failed
         }
       }
@@ -127,20 +131,24 @@ export function PdfEditor({ type, pdf, path, state_url }: PdfEditorProps) {
 
   // Countdown effect
   useEffect(() => {
+    console.log('⏱️ Countdown effect triggered with value:', countdown);
     if (countdown === null) return;
     
     const interval = setInterval(() => {
       setCountdown(prev => {
-        if (prev === null || prev <= 0) {
+        const newValue = prev === null || prev <= 0 ? 0 : prev - 1;
+        console.log('⏱️ Countdown updated:', newValue);
+        if (newValue <= 0) {
           clearInterval(interval);
-          return 0;
         }
-        console.log('Countdown:', prev - 1);
-        return prev - 1;
+        return newValue;
       });
     }, 1000);
 
-    return () => clearInterval(interval);
+    return () => {
+      console.log('🛑 Clearing countdown interval');
+      clearInterval(interval);
+    };
   }, [countdown]);
 
   // Add immediate debug log when component renders
@@ -311,27 +319,45 @@ export function PdfEditor({ type, pdf, path, state_url }: PdfEditorProps) {
         inferDarkMode={true}
         assets={createAssetStore()}
         onMount={(editor) => {
-          console.log('Editor mounted, setting up change listeners');
+          console.log('🚀 Editor mounted, setting up change listeners');
           
           // Single consolidated change listener for auto-save
           const unlistenAutoSave = editor.store.listen(
             (update) => {
+              console.log('📝 Change detected:', {
+                source: update.source,
+                hasChanges: !!update.changes,
+                type: type
+              });
+
               // Skip if not a user source or during initialization
-              if (update.source !== 'user') return;
+              if (update.source !== 'user') {
+                console.log('⏭️ Skipping non-user change');
+                return;
+              }
               
               // Skip if there are no changes
-              if (!update.changes) return;
+              if (!update.changes) {
+                console.log('⏭️ Skipping - no changes detected');
+                return;
+              }
 
               const changes = update.changes;
+              console.log('🔍 Processing changes:', {
+                hasAdded: !!changes.added,
+                addedKeys: changes.added ? Object.keys(changes.added) : []
+              });
               
               // Skip if changes only contain assets or if they're part of initialization
               if (changes.added) {
                 const addedKeys = Object.keys(changes.added as Record<string, unknown>);
-                // Skip if all changes are asset-related or if they're shapes being created during PDF initialization
-                if (addedKeys.every((key: string) => 
+                const isInitialization = addedKeys.every((key: string) => 
                   key.startsWith('asset:') || 
                   (key.startsWith('shape:') && pdf?.pages.some(page => page.shapeId === key))
-                )) {
+                );
+                
+                if (isInitialization) {
+                  console.log('⏭️ Skipping initialization changes');
                   return;
                 }
               }
@@ -339,13 +365,14 @@ export function PdfEditor({ type, pdf, path, state_url }: PdfEditorProps) {
               // Only trigger handleChange if we're not already counting down
               // and if we're in whiteboard mode or have changes that aren't just initialization
               if (type === 'whiteboard' || !changes.added) {
+                console.log('✨ Valid change detected, checking countdown state');
                 setCountdown(prev => {
                   if (prev === null) {
-                    console.log('New change detected, starting countdown');
+                    console.log('🎬 Starting new countdown');
                     handleChange(editor);
                     return 10;
                   } else {
-                    console.log('Change detected but countdown already in progress');
+                    console.log('⏳ Countdown already in progress:', prev);
                     return prev;
                   }
                 });
