@@ -13,6 +13,7 @@ export interface PdfPage {
 export interface Pdf {
   name: string;
   pages: PdfPage[];
+  imageUrls: string[];
   source: string | ArrayBuffer;
 }
 
@@ -21,7 +22,7 @@ const pageSpacing = 32;
 export function PdfPicker({ onOpenPdf }: { onOpenPdf(pdf: Pdf): void }) {
   const [isLoading, setIsLoading] = useState(false);
 
-  async function loadPdf(name: string, source: ArrayBuffer): Promise<Pdf> {
+  async function loadPdf(name: string, source: ArrayBuffer, pageImages: string[]): Promise<Pdf> {
     const PdfJS = await import('pdfjs-dist');
     PdfJS.GlobalWorkerOptions.workerSrc = new URL(
       'pdfjs-dist/build/pdf.worker.min.mjs',
@@ -54,7 +55,7 @@ export function PdfPicker({ onOpenPdf }: { onOpenPdf(pdf: Pdf): void }) {
       const height = viewport.height / scale;
       pages.push({
         pageId: i.toString(),
-        src: canvas.toDataURL(),
+        src: pageImages[i - 1] || '',
         bounds: new Box(0, top, width, height),
         assetId: AssetRecordType.createId(),
         shapeId: createShapeId(),
@@ -72,6 +73,7 @@ export function PdfPicker({ onOpenPdf }: { onOpenPdf(pdf: Pdf): void }) {
     return {
       name,
       pages,
+      imageUrls: pageImages,
       source,
     };
   }
@@ -87,7 +89,7 @@ export function PdfPicker({ onOpenPdf }: { onOpenPdf(pdf: Pdf): void }) {
 
       setIsLoading(true);
       try {
-        const pdf = await loadPdf(file.name, await file.arrayBuffer());
+        const pdf = await loadPdf(file.name, await file.arrayBuffer(), []);
         onOpenPdf(pdf);
       } finally {
         setIsLoading(false);
@@ -100,7 +102,7 @@ export function PdfPicker({ onOpenPdf }: { onOpenPdf(pdf: Pdf): void }) {
     setIsLoading(true);
     try {
       const result = await fetch(tldrawPdf);
-      const pdf = await loadPdf('tldraw.pdf', await result.arrayBuffer());
+      const pdf = await loadPdf('tldraw.pdf', await result.arrayBuffer(), []);
       onOpenPdf(pdf);
     } finally {
       setIsLoading(false);

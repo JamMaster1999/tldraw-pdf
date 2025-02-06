@@ -21,7 +21,6 @@ interface PdfEditorProps {
   type: 'pdf' | 'whiteboard';
   pdf?: Pdf;
   path?: string;
-  state_url?: string;
 }
 
 // Helper function to ensure shapes are below other shapes
@@ -91,9 +90,11 @@ const createAssetStore = (): TLAssetStore => ({
   },
 });
 
-export function PdfEditor({ type, pdf, path, state_url }: PdfEditorProps) {
+export function PdfEditor({ type, pdf, path }: PdfEditorProps) {
   const [countdown, setCountdown] = useState<number | null>(null);
   const saveRef = useRef<(() => Promise<void>) | null>(null);
+  const [isInitialized, setIsInitialized] = useState(false);
+  const editor = useEditor();
 
   // Track changes
   const handleChange = useCallback((editor: any) => {
@@ -143,8 +144,33 @@ export function PdfEditor({ type, pdf, path, state_url }: PdfEditorProps) {
     return () => clearInterval(interval);
   }, [countdown]);
 
+  // Load initial state
+  useEffect(() => {
+    const loadInitialState = async () => {
+      if (!path || isInitialized || !editor) return;
+      
+      try {
+        console.log('Loading initial state from:', path);
+        const response = await fetch(path);
+        if (!response.ok) {
+          throw new Error(`Failed to load state: ${response.status} ${response.statusText}`);
+        }
+        
+        const state = await response.json();
+        loadSnapshot(editor.store, state);
+        console.log('Initial state loaded successfully');
+      } catch (error) {
+        console.error('Failed to load initial state:', error);
+      } finally {
+        setIsInitialized(true);
+      }
+    };
+
+    loadInitialState();
+  }, [path, isInitialized, editor]);
+
   // Add immediate debug log when component renders
-  console.log('PdfEditor rendered with props:', { type, path, state_url, hasPdf: !!pdf });
+  console.log('PdfEditor rendered with props:', { type, path, hasPdf: !!pdf });
 
   const components = useMemo<TLComponents>(
     () => ({
@@ -192,32 +218,30 @@ export function PdfEditor({ type, pdf, path, state_url }: PdfEditorProps) {
             });
             
             const stateStr = JSON.stringify(currentState);
-            const fileName = path.split('/').pop() || 'state.json';
-            const file = new File([stateStr], fileName, { type: 'application/json' });
+            const file = new File([stateStr], 'state.json', { type: 'application/json' });
             
             const formData = new FormData();
             formData.append('path', path);
-            formData.append('bucket', 'xano-test');
             formData.append('file', file);
             
-            console.log('Making upload request to Xano...');
-            const response = await fetch('https://xh9i-rdvs-rnon.n7c.xano.io/api:viyKJkUs/upload', {
-              method: 'POST',
-              body: formData,
+            console.log('Making upload request...');
+            const response = await fetch(path, {
+              method: 'PUT',
+              body: stateStr,
               headers: {
-                'Accept': 'application/json',
+                'Content-Type': 'application/json',
               }
             });
             
             if (!response.ok) {
-              throw new Error(`Failed to upload drawings: ${response.status} ${response.statusText}`);
+              throw new Error(`Failed to save state: ${response.status} ${response.statusText}`);
             }
             
-            console.log('Save successful, notifying parent');
+            console.log('Save successful');
             window.parent.postMessage({ type: 'SAVE_COMPLETE', path }, '*');
             
           } catch (error: any) {
-            console.error('Failed to save drawings:', error);
+            console.error('Failed to save state:', error);
             window.parent.postMessage({ 
               type: 'SAVE_ERROR',
               error: error?.message || 'Unknown error occurred'
@@ -251,9 +275,9 @@ export function PdfEditor({ type, pdf, path, state_url }: PdfEditorProps) {
   );
 
   const loadPreviousDrawings = useCallback(async (editor: any) => {
-    console.log('loadPreviousDrawings called with state_url:', typeof state_url);
+    console.log('loadPreviousDrawings called with state_url:', typeof path);
     
-    if (!state_url) {
+    if (!path) {
       console.log('No drawings data provided');
       return;
     }
@@ -261,16 +285,16 @@ export function PdfEditor({ type, pdf, path, state_url }: PdfEditorProps) {
     try {
       let drawingsData;
       
-      if (state_url.startsWith('data:')) {
+      if (path.startsWith('data:')) {
         // Handle base64 data directly
         console.log('Processing base64 drawings data');
-        const base64Data = state_url.split(',')[1];
+        const base64Data = path.split(',')[1];
         const jsonStr = atob(base64Data);
         drawingsData = JSON.parse(jsonStr);
       } else {
         // Fallback to URL fetch
-        console.log('Fetching drawings from URL:', state_url);
-        const response = await fetch(state_url, {
+        console.log('Fetching drawings from URL:', path);
+        const response = await fetch(path, {
           method: 'GET',
           headers: {
             'Accept': 'application/json'
@@ -301,7 +325,7 @@ export function PdfEditor({ type, pdf, path, state_url }: PdfEditorProps) {
     } catch (error) {
       console.error('Error loading previous drawings:', error);
     }
-  }, [state_url]);
+  }, [path]);
 
   return (
     <div className="editor">
@@ -338,7 +362,7 @@ export function PdfEditor({ type, pdf, path, state_url }: PdfEditorProps) {
 
               // Only trigger handleChange if we're not already counting down
               // and if we're in whiteboard mode or have changes that aren't just initialization
-              if (type === 'whiteboard' || !changes.added) {
+              if (!changes.added) {
                 setCountdown(prev => {
                   if (prev === null) {
                     console.log('New change detected, starting countdown');
