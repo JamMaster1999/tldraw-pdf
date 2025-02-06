@@ -151,6 +151,16 @@ export function PdfEditor({ type, pdf, path }: PdfEditorProps) {
                   if (response.ok) {
                     const state = await response.json();
                     loadSnapshot(editor.store, state);
+                    
+                    // Force a re-render and ensure shapes are visible
+                    editor.updateInstanceState({ isToolLocked: false });
+                    
+                    // Update viewport
+                    const allShapes = editor.getCurrentPageShapes();
+                    if (allShapes.length > 0) {
+                      editor.zoomToFit();
+                    }
+                    
                     console.log('Initial state loaded successfully');
                   } else {
                     console.warn('Failed to load state, proceeding with PDF setup');
