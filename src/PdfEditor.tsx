@@ -50,6 +50,7 @@ export function PdfEditor({ type, pdf, path }: PdfEditorProps) {
   const saveRef = useRef<(() => Promise<void>) | null>(null);
   const [isInitialized, setIsInitialized] = useState(false);
   const pathRef = useRef(path);
+  const initialLoadRef = useRef(false);
 
   // Update pathRef when path changes
   useEffect(() => {
@@ -64,7 +65,7 @@ export function PdfEditor({ type, pdf, path }: PdfEditorProps) {
 
   // Auto-save effect
   useEffect(() => {
-    if (!pathRef.current || !saveRef.current) return;
+    if (!pathRef.current || !saveRef.current || !initialLoadRef.current) return;
 
     const checkAndSave = async () => {
       if (countdown === 0) {
@@ -222,7 +223,7 @@ export function PdfEditor({ type, pdf, path }: PdfEditorProps) {
           const unlistenAutoSave = editor.store.listen(
             (update) => {
               // Skip if not a user source or during initialization
-              if (update.source !== 'user') return;
+              if (update.source !== 'user' || !initialLoadRef.current) return;
               
               // Skip if there are no changes
               if (!update.changes) return;
@@ -279,6 +280,9 @@ export function PdfEditor({ type, pdf, path }: PdfEditorProps) {
                 updateCameraBounds(editor, targetBounds, isMobile);
               });
             }
+
+            // Mark initialization as complete
+            initialLoadRef.current = true;
 
             // Notify parent that everything is loaded
             window.parent.postMessage({ type: 'LOAD_COMPLETE' }, '*');
