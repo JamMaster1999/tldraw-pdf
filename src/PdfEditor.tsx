@@ -34,10 +34,54 @@ function updateCameraBounds(editor: any, targetBounds: Box, isMobile: boolean) {
   editor.setCamera(editor.getCamera(), { reset: true });
 }
 
-// Simplified asset store that just returns the URL
-const createAssetStore = (): TLAssetStore => ({
+// Helper function to get base path from state path
+function getBasePath(statePath: string) {
+  return statePath.substring(0, statePath.lastIndexOf('/') + 1);
+}
+
+// Helper function to generate UUID
+function generateUUID() {
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+    const r = (Math.random() * 16) | 0;
+    const v = c === 'x' ? r : ((r & 0x3) | 0x8);
+    return v.toString(16);
+  });
+}
+
+// Create asset store with upload support
+const createAssetStore = (path?: string): TLAssetStore => ({
   async upload(asset, file) {
-    throw new Error('Upload not implemented');
+    if (!path) {
+      throw new Error('No path provided for upload');
+    }
+
+    try {
+      const basePath = getBasePath(path);
+      const fileExtension = file.name.split('.').pop() || '';
+      const fileName = `${generateUUID()}.${fileExtension}`;
+      const fullPath = `${basePath}${fileName}`;
+
+      const formData = new FormData();
+      formData.append('path', fullPath.replace('https://uflo-screenshots.s3.us-west-1.amazonaws.com/', ''));
+      formData.append('file', file);
+      formData.append('bucket', 'uflo-screenshots');
+
+      console.log('Uploading asset:', { fullPath, type: file.type });
+      const response = await fetch('https://xh9i-rdvs-rnon.n7c.xano.io/api:viyKJkUs/upload', {
+        method: 'POST',
+        body: formData
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to upload asset: ${response.status} ${response.statusText}`);
+      }
+
+      // Return just the URL string
+      return `https://uflo-screenshots.s3.us-west-1.amazonaws.com/${fullPath.replace('https://uflo-screenshots.s3.us-west-1.amazonaws.com/', '')}`;
+    } catch (error) {
+      console.error('Failed to upload asset:', error);
+      throw error;
+    }
   },
 
   resolve(asset) {
@@ -136,7 +180,7 @@ export function PdfEditor({ type, pdf, path }: PdfEditorProps) {
         components={components}
         autoFocus
         inferDarkMode={true}
-        assets={createAssetStore()}
+        assets={createAssetStore(pathRef.current)}
         onMount={(editor) => {
           console.log('Editor mounted');
 
