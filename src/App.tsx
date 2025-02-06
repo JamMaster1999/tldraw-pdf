@@ -27,7 +27,6 @@ type State =
 interface PageImage {
   url: string;
   expires_at: number;
-  pageId?: string;
 }
 
 const pageSpacing = 32;
@@ -55,11 +54,8 @@ async function initializeFromPageImages(pageImages: PageImage[]): Promise<Pdf> {
     const width = img.width;
     const height = img.height;
     
-    // Generate a unique pageId if not provided
-    const pageId = pageImage.pageId || `page-${i + 1}`;
-    
     pages.push({
-      pageId,
+      pageId: `page-${i + 1}`,
       src: pageImage.url,
       bounds: new Box(0, top, width, height),
       assetId: AssetRecordType.createId(),
@@ -97,14 +93,31 @@ export default function PdfEditorWrapper() {
           const pdf = await initializeFromPageImages(page_images);
           console.log('PDF initialized with', pdf.pages.length, 'pages');
 
-          setState({
+          setState(prev => ({
             phase: 'edit',
-            config: { type, path },
+            config: { 
+              type, 
+              path: path || (prev.phase === 'edit' ? prev.config.path : undefined)
+            },
             pdf,
-            state_url
-          });
+            state_url: state_url || (prev.phase === 'edit' ? prev.state_url : undefined)
+          }));
         } catch (error) {
           console.error('Failed to load page images:', error);
+        }
+      } else if (type === 'UPDATE_URLS' && Array.isArray(page_images) && state.phase === 'edit') {
+        // Handle URL updates
+        try {
+          const pdf = await initializeFromPageImages(page_images);
+          setState(prev => {
+            if (prev.phase !== 'edit') return prev;
+            return {
+              ...prev,
+              pdf
+            };
+          });
+        } catch (error) {
+          console.error('Failed to update page URLs:', error);
         }
       } else if (type === 'whiteboard') {
         setState({
@@ -123,7 +136,7 @@ export default function PdfEditorWrapper() {
     return () => {
       window.removeEventListener('message', handleMessage);
     };
-  }, []);
+  }, [state.phase]); // We only need state.phase since we use setState callback for updates
 
   if (state.phase === 'loading') {
     return <div className="PdfEditor">Loading...</div>;
