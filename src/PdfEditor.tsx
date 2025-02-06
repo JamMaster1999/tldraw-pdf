@@ -94,7 +94,6 @@ export function PdfEditor({ type, pdf, path }: PdfEditorProps) {
   const [countdown, setCountdown] = useState<number | null>(null);
   const saveRef = useRef<(() => Promise<void>) | null>(null);
   const [isInitialized, setIsInitialized] = useState(false);
-  const editor = useEditor();
 
   // Track changes
   const handleChange = useCallback((editor: any) => {
@@ -143,31 +142,6 @@ export function PdfEditor({ type, pdf, path }: PdfEditorProps) {
 
     return () => clearInterval(interval);
   }, [countdown]);
-
-  // Load initial state
-  useEffect(() => {
-    const loadInitialState = async () => {
-      if (!path || isInitialized || !editor) return;
-      
-      try {
-        console.log('Loading initial state from:', path);
-        const response = await fetch(path);
-        if (!response.ok) {
-          throw new Error(`Failed to load state: ${response.status} ${response.statusText}`);
-        }
-        
-        const state = await response.json();
-        loadSnapshot(editor.store, state);
-        console.log('Initial state loaded successfully');
-      } catch (error) {
-        console.error('Failed to load initial state:', error);
-      } finally {
-        setIsInitialized(true);
-      }
-    };
-
-    loadInitialState();
-  }, [path, isInitialized, editor]);
 
   // Add immediate debug log when component renders
   console.log('PdfEditor rendered with props:', { type, path, hasPdf: !!pdf });
@@ -218,11 +192,6 @@ export function PdfEditor({ type, pdf, path }: PdfEditorProps) {
             });
             
             const stateStr = JSON.stringify(currentState);
-            const file = new File([stateStr], 'state.json', { type: 'application/json' });
-            
-            const formData = new FormData();
-            formData.append('path', path);
-            formData.append('file', file);
             
             console.log('Making upload request...');
             const response = await fetch(path, {
@@ -273,59 +242,6 @@ export function PdfEditor({ type, pdf, path }: PdfEditorProps) {
     }),
     [pdf, path, countdown]
   );
-
-  const loadPreviousDrawings = useCallback(async (editor: any) => {
-    console.log('loadPreviousDrawings called with state_url:', typeof path);
-    
-    if (!path) {
-      console.log('No drawings data provided');
-      return;
-    }
-
-    try {
-      let drawingsData;
-      
-      if (path.startsWith('data:')) {
-        // Handle base64 data directly
-        console.log('Processing base64 drawings data');
-        const base64Data = path.split(',')[1];
-        const jsonStr = atob(base64Data);
-        drawingsData = JSON.parse(jsonStr);
-      } else {
-        // Fallback to URL fetch
-        console.log('Fetching drawings from URL:', path);
-        const response = await fetch(path, {
-          method: 'GET',
-          headers: {
-            'Accept': 'application/json'
-          }
-        });
-        
-        if (!response.ok) {
-          throw new Error(`Failed to fetch drawings: ${response.status}`);
-        }
-        
-        drawingsData = await response.json();
-      }
-
-      console.log('Successfully parsed drawings data:', {
-        hasDocument: !!drawingsData.document,
-        hasSession: !!drawingsData.session,
-        documentSize: drawingsData.document ? Object.keys(drawingsData.document).length : 0
-      });
-      
-      // Load the snapshot into the editor
-      editor.setCurrentTool('select');
-      loadSnapshot(editor.store, {
-        document: drawingsData.document,
-        session: drawingsData.session
-      });
-      
-      console.log('Previous drawings loaded successfully');
-    } catch (error) {
-      console.error('Error loading previous drawings:', error);
-    }
-  }, [path]);
 
   return (
     <div className="editor">
@@ -452,9 +368,25 @@ export function PdfEditor({ type, pdf, path }: PdfEditorProps) {
                 isMobile = isMobileNow;
                 updateCameraBounds(editor, targetBounds, isMobile);
               });
+            }
 
-              // Try to load previous drawings after PDF is set up
-              await loadPreviousDrawings(editor);
+            // Load initial state if available
+            if (path && !isInitialized) {
+              try {
+                console.log('Loading initial state from:', path);
+                const response = await fetch(path);
+                if (!response.ok) {
+                  throw new Error(`Failed to load state: ${response.status} ${response.statusText}`);
+                }
+                
+                const state = await response.json();
+                loadSnapshot(editor.store, state);
+                console.log('Initial state loaded successfully');
+              } catch (error) {
+                console.error('Failed to load initial state:', error);
+              } finally {
+                setIsInitialized(true);
+              }
             }
 
             // Notify parent that everything is loaded
