@@ -46,67 +46,13 @@ const createAssetStore = (): TLAssetStore => ({
 });
 
 export function PdfEditor({ type, pdf, path }: PdfEditorProps) {
-  const [countdown, setCountdown] = useState<number | null>(null);
-  const saveRef = useRef<(() => Promise<void>) | null>(null);
   const [isInitialized, setIsInitialized] = useState(false);
   const pathRef = useRef(path);
-  const initialLoadRef = useRef(false);
 
   // Update pathRef when path changes
   useEffect(() => {
     pathRef.current = path;
   }, [path]);
-
-  // Track changes
-  const handleChange = useCallback((editor: any) => {
-    console.log('handleChange called');
-    setCountdown(10); // Start countdown from 10 seconds
-  }, []);
-
-  // Auto-save effect
-  useEffect(() => {
-    if (!pathRef.current || !saveRef.current || !initialLoadRef.current) return;
-
-    const checkAndSave = async () => {
-      if (countdown === 0) {
-        console.log('Countdown reached 0, saving...');
-        try {
-          const save = saveRef.current;
-          if (save) {
-            await save();
-            console.log('Auto-save completed successfully');
-            setCountdown(null); // Reset countdown after successful save
-          }
-        } catch (error) {
-          console.error('Auto-save failed:', error);
-          setCountdown(10); // Retry in 10 seconds if save failed
-        }
-      }
-    };
-
-    checkAndSave();
-  }, [countdown]);
-
-  // Countdown effect
-  useEffect(() => {
-    if (countdown === null) return;
-    
-    const interval = setInterval(() => {
-      setCountdown(prev => {
-        if (prev === null || prev <= 0) {
-          clearInterval(interval);
-          return 0;
-        }
-        console.log('Countdown:', prev - 1);
-        return prev - 1;
-      });
-    }, 1000);
-
-    return () => clearInterval(interval);
-  }, [countdown]);
-
-  // Add immediate debug log when component renders
-  console.log('PdfEditor rendered with props:', { type, path: pathRef.current, hasPdf: !!pdf });
 
   const components = useMemo<TLComponents>(
     () => ({
@@ -114,22 +60,6 @@ export function PdfEditor({ type, pdf, path }: PdfEditorProps) {
       InFrontOfTheCanvas: () => (
         <>
           {pdf && <PageOverlayScreen pdf={pdf} />}
-          {countdown !== null && (
-            <div style={{
-              position: 'fixed',
-              top: '20px',
-              right: '20px',
-              background: 'rgba(0, 0, 0, 0.7)',
-              color: 'white',
-              padding: '8px 16px',
-              borderRadius: '4px',
-              zIndex: 1000,
-              fontSize: '14px',
-              fontWeight: 'bold'
-            }}>
-              {countdown === 0 ? 'Saving...' : `Saving in ${countdown}s...`}
-            </div>
-          )}
         </>
       ),
       SharePanel: () => {
@@ -187,14 +117,6 @@ export function PdfEditor({ type, pdf, path }: PdfEditorProps) {
           }
         }, [editor]);
 
-        // Store the save function in the ref for auto-save to use
-        useEffect(() => {
-          saveRef.current = handleSave;
-          return () => {
-            saveRef.current = null;
-          };
-        }, [handleSave]);
-
         return (
           <button
             className="SaveDrawingsButton"
@@ -206,7 +128,7 @@ export function PdfEditor({ type, pdf, path }: PdfEditorProps) {
         );
       },
     }),
-    [pdf, countdown]
+    [pdf]
   );
 
   return (
@@ -217,37 +139,69 @@ export function PdfEditor({ type, pdf, path }: PdfEditorProps) {
         inferDarkMode={true}
         assets={createAssetStore()}
         onMount={(editor) => {
-          console.log('Editor mounted, setting up change listeners');
-          
-          // Single consolidated change listener for auto-save
-          const unlistenAutoSave = editor.store.listen(
-            (update) => {
-              // Skip if not a user source or during initialization
-              if (update.source !== 'user' || !initialLoadRef.current) return;
-              
-              // Skip if there are no changes
-              if (!update.changes) return;
-
-              // Only trigger handleChange if we're not already counting down
-              setCountdown(prev => {
-                if (prev === null) {
-                  console.log('New change detected, starting countdown');
-                  handleChange(editor);
-                  return 10;
-                } else {
-                  console.log('Change detected but countdown already in progress');
-                  return prev;
-                }
-              });
-            },
-            { scope: 'document', source: 'user' }
-          );
+          console.log('Editor mounted');
 
           // Handle async initialization
           (async () => {
-            // Load initial state if available
-            if (pathRef.current && !isInitialized) {
-              try {
+            try {
+              // First set up PDF if we have one
+              if (pdf && pdf.pages.length > 0) {
+                console.log('Setting up PDF pages...');
+                // Create assets and shapes for PDF pages
+                await Promise.all([
+                  editor.createAssets(
+                    pdf.pages.map((page) => ({
+                      id: page.assetId,
+                      typeName: 'asset',
+                      type: 'image',
+                      meta: {
+                        fileSize: undefined,
+                      },
+                      props: {
+                        name: 'page',
+                        src: page.src,
+                        w: page.bounds.w,
+                        h: page.bounds.h,
+                        mimeType: 'image/webp',
+                        isAnimated: false,
+                      },
+                    }))
+                  ),
+                  editor.createShapes(
+                    pdf.pages.map((page) => ({
+                      id: page.shapeId,
+                      type: 'image',
+                      x: page.bounds.x,
+                      y: page.bounds.y,
+                      isLocked: true,
+                      props: {
+                        assetId: page.assetId,
+                        w: page.bounds.w,
+                        h: page.bounds.h,
+                      },
+                    }))
+                  ),
+                ]);
+
+                // Set up camera
+                const targetBounds = pdf.pages.reduce(
+                  (acc, page) => acc.union(page.bounds),
+                  pdf.pages[0].bounds.clone()
+                );
+
+                let isMobile = editor.getViewportScreenBounds().width < 840;
+                updateCameraBounds(editor, targetBounds, isMobile);
+
+                react('update camera', () => {
+                  const isMobileNow = editor.getViewportScreenBounds().width < 840;
+                  if (isMobileNow === isMobile) return;
+                  isMobile = isMobileNow;
+                  updateCameraBounds(editor, targetBounds, isMobile);
+                });
+              }
+
+              // Then load state if available
+              if (pathRef.current && !isInitialized) {
                 console.log('Loading initial state from:', pathRef.current);
                 const response = await fetch(pathRef.current);
                 if (!response.ok) {
@@ -258,40 +212,14 @@ export function PdfEditor({ type, pdf, path }: PdfEditorProps) {
                 loadSnapshot(editor.store, state);
                 console.log('Initial state loaded successfully');
                 setIsInitialized(true);
-              } catch (error) {
-                console.error('Failed to load initial state:', error);
               }
+
+              // Notify parent that everything is loaded
+              window.parent.postMessage({ type: 'LOAD_COMPLETE' }, '*');
+            } catch (error) {
+              console.error('Failed during initialization:', error);
             }
-
-            // Just set up camera for initial view if we have a PDF
-            if (pdf && pdf.pages.length > 0) {
-              const targetBounds = pdf.pages.reduce(
-                (acc, page) => acc.union(page.bounds),
-                pdf.pages[0].bounds.clone()
-              );
-
-              let isMobile = editor.getViewportScreenBounds().width < 840;
-              updateCameraBounds(editor, targetBounds, isMobile);
-
-              react('update camera', () => {
-                const isMobileNow = editor.getViewportScreenBounds().width < 840;
-                if (isMobileNow === isMobile) return;
-                isMobile = isMobileNow;
-                updateCameraBounds(editor, targetBounds, isMobile);
-              });
-            }
-
-            // Mark initialization as complete
-            initialLoadRef.current = true;
-
-            // Notify parent that everything is loaded
-            window.parent.postMessage({ type: 'LOAD_COMPLETE' }, '*');
           })();
-
-          // Return cleanup function
-          return () => {
-            unlistenAutoSave();
-          };
         }}
       />
     </div>

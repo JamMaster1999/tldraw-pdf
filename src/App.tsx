@@ -73,8 +73,6 @@ async function initializeFromPageImages(pageImages: string[]): Promise<Pdf> {
 
 export default function PdfEditorWrapper() {
   const [state, setState] = useState<State>({ phase: 'loading' });
-
-  // Extract the current path for dependency tracking
   const currentPath = state.phase === 'edit' ? state.config.path : undefined;
 
   useEffect(() => {
