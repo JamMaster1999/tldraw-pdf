@@ -343,50 +343,32 @@ export function PdfEditor({ type, pdf, path, state_url }: PdfEditorProps) {
               }
 
               const changes = update.changes;
-              console.log('🔍 Processing changes:', {
-                hasAdded: !!changes.added,
-                addedKeys: changes.added ? Object.keys(changes.added) : [],
-                hasUpdated: !!changes.updated,
-                updatedKeys: changes.updated ? Object.keys(changes.updated) : [],
-                hasRemoved: !!changes.removed,
-                removedKeys: changes.removed ? Object.keys(changes.removed) : []
-              });
               
               // Skip if changes only contain assets or if they're part of initialization
               if (changes.added) {
                 const addedKeys = Object.keys(changes.added as Record<string, unknown>);
-                const isInitialization = addedKeys.every((key: string) => 
+                // Skip if all changes are asset-related or if they're shapes being created during PDF initialization
+                if (addedKeys.every((key: string) => 
                   key.startsWith('asset:') || 
                   (key.startsWith('shape:') && pdf?.pages.some(page => page.shapeId === key))
-                );
-                
-                if (isInitialization) {
+                )) {
                   console.log('⏭️ Skipping initialization changes');
                   return;
                 }
               }
 
-              // Check if there are any meaningful changes (updates, removals, or non-initialization additions)
-              const hasMeaningfulChanges = 
-                (changes.updated && Object.keys(changes.updated).length > 0) ||
-                (changes.removed && Object.keys(changes.removed).length > 0) ||
-                (changes.added && Object.keys(changes.added).length > 0);
-
-              if (hasMeaningfulChanges) {
-                console.log('✨ Valid change detected, checking countdown state');
-                setCountdown(prev => {
-                  if (prev === null) {
-                    console.log('🎬 Starting new countdown');
-                    handleChange(editor);
-                    return 10;
-                  } else {
-                    console.log('⏳ Countdown already in progress:', prev);
-                    return prev;
-                  }
-                });
-              } else {
-                console.log('⏭️ No meaningful changes detected');
-              }
+              // Start countdown for any user changes that aren't initialization
+              console.log('✨ Valid change detected, checking countdown state');
+              setCountdown(prev => {
+                if (prev === null) {
+                  console.log('🎬 Starting new countdown');
+                  handleChange(editor);
+                  return 10;
+                } else {
+                  console.log('⏳ Countdown already in progress:', prev);
+                  return prev;
+                }
+              });
             },
             { scope: 'document', source: 'user' }
           );
