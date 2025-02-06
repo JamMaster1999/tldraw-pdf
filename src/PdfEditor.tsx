@@ -144,7 +144,25 @@ export function PdfEditor({ type, pdf, path }: PdfEditorProps) {
           // Handle async initialization
           (async () => {
             try {
-              // First set up PDF if we have one
+              // Try to load state first if available
+              if (pathRef.current) {
+                try {
+                  console.log('Loading initial state from:', pathRef.current);
+                  const response = await fetch(pathRef.current);
+                  if (response.ok) {
+                    const state = await response.json();
+                    loadSnapshot(editor.store, state);
+                    console.log('Initial state loaded successfully');
+                    setIsInitialized(true);
+                  } else {
+                    console.warn('Failed to load state, proceeding with PDF setup');
+                  }
+                } catch (error) {
+                  console.error('Error loading state:', error);
+                }
+              }
+
+              // Then set up PDF if we have one
               if (pdf && pdf.pages.length > 0) {
                 console.log('Setting up PDF pages...');
                 // Create assets and shapes for PDF pages
@@ -198,24 +216,14 @@ export function PdfEditor({ type, pdf, path }: PdfEditorProps) {
                 });
               }
 
-              // Then load state if available
-              if (pathRef.current && !isInitialized) {
-                console.log('Loading initial state from:', pathRef.current);
-                const response = await fetch(pathRef.current);
-                if (!response.ok) {
-                  throw new Error(`Failed to load state: ${response.status} ${response.statusText}`);
-                }
-                
-                const state = await response.json();
-                loadSnapshot(editor.store, state);
-                console.log('Initial state loaded successfully');
-                setIsInitialized(true);
-              }
-
               // Notify parent that everything is loaded
               window.parent.postMessage({ type: 'LOAD_COMPLETE' }, '*');
             } catch (error) {
               console.error('Failed during initialization:', error);
+              window.parent.postMessage({ 
+                type: 'LOAD_ERROR',
+                error: error instanceof Error ? error.message : 'Unknown error'
+              }, '*');
             }
           })();
         }}
