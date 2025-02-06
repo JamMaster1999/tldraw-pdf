@@ -345,7 +345,11 @@ export function PdfEditor({ type, pdf, path, state_url }: PdfEditorProps) {
               const changes = update.changes;
               console.log('🔍 Processing changes:', {
                 hasAdded: !!changes.added,
-                addedKeys: changes.added ? Object.keys(changes.added) : []
+                addedKeys: changes.added ? Object.keys(changes.added) : [],
+                hasUpdated: !!changes.updated,
+                updatedKeys: changes.updated ? Object.keys(changes.updated) : [],
+                hasRemoved: !!changes.removed,
+                removedKeys: changes.removed ? Object.keys(changes.removed) : []
               });
               
               // Skip if changes only contain assets or if they're part of initialization
@@ -362,9 +366,13 @@ export function PdfEditor({ type, pdf, path, state_url }: PdfEditorProps) {
                 }
               }
 
-              // Only trigger handleChange if we're not already counting down
-              // and if we're in whiteboard mode or have changes that aren't just initialization
-              if (type === 'whiteboard' || !changes.added) {
+              // Check if there are any meaningful changes (updates, removals, or non-initialization additions)
+              const hasMeaningfulChanges = 
+                (changes.updated && Object.keys(changes.updated).length > 0) ||
+                (changes.removed && Object.keys(changes.removed).length > 0) ||
+                (changes.added && Object.keys(changes.added).length > 0);
+
+              if (hasMeaningfulChanges) {
                 console.log('✨ Valid change detected, checking countdown state');
                 setCountdown(prev => {
                   if (prev === null) {
@@ -376,6 +384,8 @@ export function PdfEditor({ type, pdf, path, state_url }: PdfEditorProps) {
                     return prev;
                   }
                 });
+              } else {
+                console.log('⏭️ No meaningful changes detected');
               }
             },
             { scope: 'document', source: 'user' }
