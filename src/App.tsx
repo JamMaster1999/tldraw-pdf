@@ -27,7 +27,7 @@ type State =
 interface PageImage {
   url: string;
   expires_at: number;
-  pageId: string;
+  pageId?: string;
 }
 
 const pageSpacing = 32;
@@ -55,8 +55,11 @@ async function initializeFromPageImages(pageImages: PageImage[]): Promise<Pdf> {
     const width = img.width;
     const height = img.height;
     
+    // Generate a unique pageId if not provided
+    const pageId = pageImage.pageId || `page-${i + 1}`;
+    
     pages.push({
-      pageId: pageImage.pageId,
+      pageId,
       src: pageImage.url,
       bounds: new Box(0, top, width, height),
       assetId: AssetRecordType.createId(),

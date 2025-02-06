@@ -88,10 +88,9 @@ const createAssetStore = (urlMap: Map<string, string>): TLAssetStore => ({
   },
 
   resolve(asset) {
-    // The src in the asset should be the pageId
-    const src = asset.props.src || '';
+    if (!asset.props.src) return '';
     // Return the current signed URL for this pageId if available
-    return urlMap.get(src) || src;
+    return urlMap.get(asset.props.src) || asset.props.src;
   },
 });
 
@@ -196,7 +195,9 @@ export function PdfEditor({ type, pdf, path, state_url, onRequestNewUrls }: PdfE
       const newMap = new Map<string, string>();
       pdf.pages.forEach(page => {
         // Store mapping from pageId to URL
-        newMap.set(page.pageId, page.src);
+        if (page.pageId && page.src) {
+          newMap.set(page.pageId, page.src);
+        }
       });
       setUrlMap(newMap);
     }
@@ -329,7 +330,7 @@ export function PdfEditor({ type, pdf, path, state_url, onRequestNewUrls }: PdfE
                       w: page.bounds.w,
                       h: page.bounds.h,
                       mimeType: 'image/webp',
-                      src: page.pageId,  // Use pageId instead of URL
+                      src: page.pageId || `page-${page.shapeId}`, // Ensure we always have a src
                       name: 'page',
                       isAnimated: false,
                     },
