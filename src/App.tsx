@@ -100,7 +100,7 @@ export default function PdfEditorWrapper() {
               path: path || (prev.phase === 'edit' ? prev.config.path : undefined)
             },
             pdf,
-            state_url: state_url || (prev.phase === 'edit' ? prev.state_url : undefined)
+            state_url: state_url // use only the provided state_url; do not fallback to prev.state_url
           }));
         } catch (error) {
           console.error('Failed to load page images:', error);
@@ -113,7 +113,8 @@ export default function PdfEditorWrapper() {
             if (prev.phase !== 'edit') return prev;
             return {
               ...prev,
-              pdf
+              pdf,
+              state_url: undefined // clear state_url to force reloading with updated signed URLs
             };
           });
         } catch (error) {
