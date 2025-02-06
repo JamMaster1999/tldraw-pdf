@@ -320,10 +320,16 @@ export function PdfEditor({ type, pdf, path }: PdfEditorProps) {
 
             // Then set up PDF if we have one
             if (pdf && pdf.pages.length > 0) {
-              await Promise.all([
-                // Create assets
-                editor.createAssets(
-                  pdf.pages.map((page) => ({
+              // First create any missing assets
+              const existingAssets = new Set(
+                Object.entries(editor.store.query.records("asset"))
+                  .map(([id]) => id)
+              );
+              const assetsToCreate = pdf.pages.filter(page => !existingAssets.has(page.assetId));
+              
+              if (assetsToCreate.length > 0) {
+                await editor.createAssets(
+                  assetsToCreate.map((page) => ({
                     id: page.assetId,
                     typeName: 'asset',
                     type: 'image',
@@ -337,10 +343,19 @@ export function PdfEditor({ type, pdf, path }: PdfEditorProps) {
                       isAnimated: false,
                     },
                   }))
-                ),
-                // Create shapes
-                editor.createShapes(
-                  pdf.pages.map(
+                );
+              }
+
+              // Then create any missing shapes
+              const existingShapes = new Set(
+                Object.entries(editor.store.query.records("shape"))
+                  .map(([id]) => id)
+              );
+              const shapesToCreate = pdf.pages.filter(page => !existingShapes.has(page.shapeId));
+              
+              if (shapesToCreate.length > 0) {
+                await editor.createShapes(
+                  shapesToCreate.map(
                     (page): TLShapePartial<TLImageShape> => ({
                       id: page.shapeId,
                       type: 'image',
@@ -354,8 +369,8 @@ export function PdfEditor({ type, pdf, path }: PdfEditorProps) {
                       },
                     })
                   )
-                )
-              ]);
+                );
+              }
 
               const shapeIds = pdf.pages.map((page) => page.shapeId);
               const shapeIdSet = new Set(shapeIds);
