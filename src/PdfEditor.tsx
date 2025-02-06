@@ -154,9 +154,7 @@ export function PdfEditor({ type, pdf, path }: PdfEditorProps) {
                       id: page.assetId,
                       typeName: 'asset',
                       type: 'image',
-                      meta: {
-                        fileSize: undefined,
-                      },
+                      meta: {},
                       props: {
                         name: 'page',
                         src: page.src,
