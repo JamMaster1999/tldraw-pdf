@@ -29,6 +29,32 @@ interface PageImage {
   expires_at: number;
 }
 
+// Function to update URLs in the state data
+function updateStateUrls(base64State: string, pageImages: PageImage[]): string {
+  try {
+    // Get the base64 part after the prefix
+    const base64Data = base64State.replace('data:application/json;base64,', '');
+    
+    // Decode and parse
+    const jsonStr = atob(base64Data);
+    const state = JSON.parse(jsonStr);
+
+    // Update each asset URL
+    pageImages.forEach((pageImage, index) => {
+      const assetId = `asset:uflo_pdf_page_${index + 1}`;
+      if (state.document?.store?.[assetId]) {
+        state.document.store[assetId].props.src = pageImage.url;
+      }
+    });
+
+    // Convert back to base64 with the same prefix
+    return `data:application/json;base64,${btoa(JSON.stringify(state))}`;
+  } catch (error) {
+    console.error('Failed to update state URLs:', error);
+    return base64State; // Return original if update fails
+  }
+}
+
 const pageSpacing = 32;
 
 // Initialize from pre-rendered page images
@@ -54,11 +80,14 @@ async function initializeFromPageImages(pageImages: PageImage[]): Promise<Pdf> {
     const width = img.width;
     const height = img.height;
     
+    // Create a deterministic asset ID that we can predict later
+    const assetId = AssetRecordType.createId(`uflo_pdf_page_${i + 1}`);
+    
     pages.push({
       pageId: `page-${i + 1}`,
       src: pageImage.url,
       bounds: new Box(0, top, width, height),
-      assetId: AssetRecordType.createId(),
+      assetId,
       shapeId: createShapeId(),
     });
     
@@ -93,6 +122,9 @@ export default function PdfEditorWrapper() {
           const pdf = await initializeFromPageImages(page_images);
           console.log('PDF initialized with', pdf.pages.length, 'pages');
 
+          // If we have state_url (base64 data), update the URLs in it
+          const updatedStateUrl = state_url ? updateStateUrls(state_url, page_images) : undefined;
+
           setState(prev => ({
             phase: 'edit',
             config: { 
@@ -100,7 +132,7 @@ export default function PdfEditorWrapper() {
               path: path || (prev.phase === 'edit' ? prev.config.path : undefined)
             },
             pdf,
-            state_url: state_url // use only the provided state_url; do not fallback to prev.state_url
+            state_url: updatedStateUrl
           }));
         } catch (error) {
           console.error('Failed to load page images:', error);

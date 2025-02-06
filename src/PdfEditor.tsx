@@ -1,4 +1,4 @@
-import { useMemo, useCallback, useState } from 'react';
+import { useMemo, useCallback, useState, useEffect, useRef } from 'react';
 import {
   Box,
   SVGContainer,
@@ -91,120 +91,168 @@ const createAssetStore = (): TLAssetStore => ({
   },
 });
 
-const SaveDrawingsButton = track(function SaveDrawingsButton({ path }: { path?: string }) {
-  const editor = useEditor();
-  const [isSaving, setIsSaving] = useState(false);
-  
-  const handleSave = useCallback(async () => {
-    if (!path) {
-      console.log('No path provided for save');
-      return;
-    }
-    
-    try {
-      console.log('Starting save process...', { path });
-      setIsSaving(true);
-      
-      // Get the current state
-      const currentState = getSnapshot(editor.store);
-      console.log('Got editor state:', {
-        hasDocument: !!currentState.document,
-        hasSession: !!currentState.session,
-        documentSize: currentState.document ? Object.keys(currentState.document).length : 0
-      });
-      
-      const stateStr = JSON.stringify(currentState);
-      console.log('Got editor state, size:', stateStr.length);
-      
-      // Create a file from the state
-      const fileName = path.split('/').pop() || 'state.json';
-      console.log('Creating file with name:', fileName);
-      const file = new File(
-        [stateStr], 
-        fileName,
-        { type: 'application/json' }
-      );
-
-      // Create form data
-      const formData = new FormData();
-      formData.append('path', path);
-      formData.append('bucket', 'xano-test');
-      formData.append('file', file);
-      
-      console.log('Making upload request to Xano...');
-      // Make the upload request
-      const response = await fetch('https://xh9i-rdvs-rnon.n7c.xano.io/api:viyKJkUs/upload', {
-        method: 'POST',
-        body: formData,
-        headers: {
-          'Accept': 'application/json',
-        }
-      });
-
-      console.log('Got response:', response.status);
-      const responseData = await response.json();
-      console.log('Response data:', responseData);
-
-      if (!response.ok) {
-        throw new Error(`Failed to upload drawings: ${response.status} ${response.statusText}`);
-      }
-
-      console.log('Save successful, notifying parent');
-      // Notify parent of successful save
-      window.parent.postMessage({ 
-        type: 'SAVE_COMPLETE',
-        path 
-      }, '*');
-
-    } catch (error: any) {
-      console.error('Failed to save drawings:', error);
-      // Notify parent of save error
-      window.parent.postMessage({ 
-        type: 'SAVE_ERROR',
-        error: error?.message || 'Unknown error occurred'
-      }, '*');
-    } finally {
-      setIsSaving(false);
-    }
-  }, [editor, path]);
-
-  // Log when the button is rendered
-  console.log('Rendering SaveDrawingsButton with path:', path);
-
-  return (
-    <button
-      className="SaveDrawingsButton"
-      onClick={handleSave}
-      disabled={isSaving || !path}
-    >
-      {isSaving ? 'Saving...' : 'Save Drawings'}
-    </button>
-  );
-});
-
 export function PdfEditor({ type, pdf, path, state_url }: PdfEditorProps) {
+  const [lastChangeTime, setLastChangeTime] = useState<number>(0);
+  const [countdown, setCountdown] = useState<number | null>(null);
+  const lastSaveTimeRef = useRef<number>(0);
+  const saveRef = useRef<(() => Promise<void>) | null>(null);
+
+  // Track changes
+  const handleChange = useCallback((editor: any) => {
+    if (editor.currentPageId === 'page:page') {
+      setLastChangeTime(Date.now());
+      setCountdown(10); // Start countdown from 10 seconds
+      console.log('Drawing changed, will trigger save in 10 seconds');
+    }
+  }, []);
+
+  // Auto-save effect
+  useEffect(() => {
+    if (!path || !saveRef.current) return;
+
+    const checkAndSave = async () => {
+      const now = Date.now();
+      if (lastChangeTime > lastSaveTimeRef.current && now - lastSaveTimeRef.current >= 10000) {
+        console.log('Auto-saving drawings...');
+        lastSaveTimeRef.current = now;
+        try {
+          const save = saveRef.current;
+          if (save) {
+            await save();
+            console.log('Auto-save completed successfully');
+            setCountdown(null); // Reset countdown after successful save
+          }
+        } catch (error) {
+          console.error('Auto-save failed:', error);
+        }
+      }
+    };
+
+    const interval = setInterval(checkAndSave, 1000); // Check every second
+    return () => clearInterval(interval);
+  }, [path, lastChangeTime]);
+
+  // Countdown effect
+  useEffect(() => {
+    if (countdown === null) return;
+    
+    const interval = setInterval(() => {
+      setCountdown(prev => {
+        if (prev === null || prev <= 0) {
+          clearInterval(interval);
+          return null;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [countdown]);
+
   // Add immediate debug log when component renders
   console.log('PdfEditor rendered with props:', { type, path, state_url, hasPdf: !!pdf });
 
   const components = useMemo<TLComponents>(
     () => ({
       PageMenu: null,
-      InFrontOfTheCanvas: () => pdf ? <PageOverlayScreen pdf={pdf} /> : null,
-      SharePanel: () => <SaveDrawingsButton path={path} />,
-    }),
-    [pdf, path]
-  );
+      InFrontOfTheCanvas: () => (
+        <>
+          {pdf && <PageOverlayScreen pdf={pdf} />}
+          {countdown !== null && (
+            <div style={{
+              position: 'fixed',
+              top: '20px',
+              right: '20px',
+              background: 'rgba(0, 0, 0, 0.7)',
+              color: 'white',
+              padding: '8px 16px',
+              borderRadius: '4px',
+              zIndex: 1000
+            }}>
+              Saving in {countdown}s...
+            </div>
+          )}
+        </>
+      ),
+      SharePanel: () => {
+        const editor = useEditor();
+        const [isSaving, setIsSaving] = useState(false);
+        
+        const handleSave = useCallback(async () => {
+          if (!path) {
+            console.log('No path provided for save');
+            return;
+          }
+          
+          try {
+            console.log('Starting save process...', { path });
+            setIsSaving(true);
+            
+            const currentState = getSnapshot(editor.store);
+            console.log('Got editor state:', {
+              hasDocument: !!currentState.document,
+              hasSession: !!currentState.session,
+              documentSize: currentState.document ? Object.keys(currentState.document).length : 0
+            });
+            
+            const stateStr = JSON.stringify(currentState);
+            const fileName = path.split('/').pop() || 'state.json';
+            const file = new File([stateStr], fileName, { type: 'application/json' });
+            
+            const formData = new FormData();
+            formData.append('path', path);
+            formData.append('bucket', 'xano-test');
+            formData.append('file', file);
+            
+            console.log('Making upload request to Xano...');
+            const response = await fetch('https://xh9i-rdvs-rnon.n7c.xano.io/api:viyKJkUs/upload', {
+              method: 'POST',
+              body: formData,
+              headers: {
+                'Accept': 'application/json',
+              }
+            });
+            
+            if (!response.ok) {
+              throw new Error(`Failed to upload drawings: ${response.status} ${response.statusText}`);
+            }
+            
+            console.log('Save successful, notifying parent');
+            window.parent.postMessage({ type: 'SAVE_COMPLETE', path }, '*');
+            
+          } catch (error: any) {
+            console.error('Failed to save drawings:', error);
+            window.parent.postMessage({ 
+              type: 'SAVE_ERROR',
+              error: error?.message || 'Unknown error occurred'
+            }, '*');
+            throw error;
+          } finally {
+            setIsSaving(false);
+          }
+        }, [editor, path]);
 
-  const handleSave = useCallback((editor: any) => {
-    const currentState = getSnapshot(editor.store);
-    if (type === 'whiteboard') {
-      window.parent.postMessage({ 
-        type: 'SAVE_STATE', 
-        format: 'base64',
-        state: btoa(JSON.stringify(currentState))
-      }, '*');
-    }
-  }, [type]);
+        // Store the save function in the ref for auto-save to use
+        useEffect(() => {
+          saveRef.current = handleSave;
+          return () => {
+            saveRef.current = null;
+          };
+        }, [handleSave]);
+
+        return (
+          <button
+            className="SaveDrawingsButton"
+            onClick={handleSave}
+            disabled={isSaving || !path}
+          >
+            {isSaving ? 'Saving...' : 'Save Drawings'}
+          </button>
+        );
+      },
+    }),
+    [pdf, path, countdown]
+  );
 
   const loadPreviousDrawings = useCallback(async (editor: any) => {
     console.log('loadPreviousDrawings called with state_url:', typeof state_url);
@@ -267,10 +315,53 @@ export function PdfEditor({ type, pdf, path, state_url }: PdfEditorProps) {
         inferDarkMode={true}
         assets={createAssetStore()}
         onMount={(editor) => {
+          console.log('Editor mounted, setting up change listeners');
+          
+          // Add change listener for auto-save
+          const unlistenAutoSave = editor.store.listen(
+            (update) => {
+              // Skip if not a user source or during initialization
+              if (update.source !== 'user') return;
+              
+              // Skip if there are no changes
+              if (!update.changes) return;
+
+              const changes = update.changes;
+              
+              // Skip if changes only contain assets or if they're part of initialization
+              if (changes.added) {
+                const addedKeys = Object.keys(changes.added as Record<string, unknown>);
+                // Skip if all changes are asset-related or if they're shapes being created during PDF initialization
+                if (addedKeys.every((key: string) => 
+                  key.startsWith('asset:') || 
+                  (key.startsWith('shape:') && pdf?.pages.some(page => page.shapeId === key))
+                )) {
+                  return;
+                }
+              }
+
+              console.log('Detected user change:', update);
+              handleChange(editor);
+            },
+            { scope: 'document', source: 'user' }
+          );
+
           // Set up autosave only for whiteboard mode
           if (type === 'whiteboard') {
-            editor.store.listen(() => {
-              handleSave(editor);
+            editor.store.listen((update) => {
+              // Skip if not a user source or during initialization
+              if (update.source !== 'user' || !update.changes?.added) return;
+              
+              const addedKeys = Object.keys(update.changes.added as Record<string, unknown>);
+              // Skip if changes are only assets or initialization shapes
+              if (addedKeys.every((key: string) => 
+                key.startsWith('asset:') || 
+                (key.startsWith('shape:') && pdf?.pages.some(page => page.shapeId === key))
+              )) {
+                return;
+              }
+
+              handleChange(editor);
             });
           }
 
@@ -357,9 +448,9 @@ export function PdfEditor({ type, pdf, path, state_url }: PdfEditorProps) {
             window.parent.postMessage({ type: 'LOAD_COMPLETE' }, '*');
           })();
 
-          // Return cleanup function if needed
+          // Return cleanup function
           return () => {
-            // Any cleanup code here
+            unlistenAutoSave();
           };
         }}
       />
