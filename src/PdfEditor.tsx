@@ -230,7 +230,7 @@ export function PdfEditor({ type, pdf, path, state_url }: PdfEditorProps) {
           } finally {
             setIsSaving(false);
           }
-        }, [editor, path]);
+        }, [editor]);
 
         // Store the save function in the ref for auto-save to use
         useEffect(() => {
