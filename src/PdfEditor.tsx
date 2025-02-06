@@ -313,7 +313,7 @@ export function PdfEditor({ type, pdf, path, state_url }: PdfEditorProps) {
         onMount={(editor) => {
           console.log('Editor mounted, setting up change listeners');
           
-          // Add change listener for auto-save
+          // Single consolidated change listener for auto-save
           const unlistenAutoSave = editor.store.listen(
             (update) => {
               // Skip if not a user source or during initialization
@@ -337,34 +337,22 @@ export function PdfEditor({ type, pdf, path, state_url }: PdfEditorProps) {
               }
 
               // Only trigger handleChange if we're not already counting down
-              if (countdown === null) {
-                console.log('New change detected, starting countdown');
-                handleChange(editor);
-              } else {
-                console.log('Change detected but countdown already in progress');
+              // and if we're in whiteboard mode or have changes that aren't just initialization
+              if (type === 'whiteboard' || !changes.added) {
+                setCountdown(prev => {
+                  if (prev === null) {
+                    console.log('New change detected, starting countdown');
+                    handleChange(editor);
+                    return 10;
+                  } else {
+                    console.log('Change detected but countdown already in progress');
+                    return prev;
+                  }
+                });
               }
             },
             { scope: 'document', source: 'user' }
           );
-
-          // Set up autosave only for whiteboard mode
-          if (type === 'whiteboard') {
-            editor.store.listen((update) => {
-              // Skip if not a user source or during initialization
-              if (update.source !== 'user' || !update.changes?.added) return;
-              
-              const addedKeys = Object.keys(update.changes.added as Record<string, unknown>);
-              // Skip if changes are only assets or initialization shapes
-              if (addedKeys.every((key: string) => 
-                key.startsWith('asset:') || 
-                (key.startsWith('shape:') && pdf?.pages.some(page => page.shapeId === key))
-              )) {
-                return;
-              }
-
-              handleChange(editor);
-            });
-          }
 
           // Handle async initialization
           (async () => {
