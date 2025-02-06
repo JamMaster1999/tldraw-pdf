@@ -1,4 +1,4 @@
-import { useMemo, useCallback, useState, useEffect, useRef } from 'react';
+import { useMemo, useCallback, useState } from 'react';
 import {
   Box,
   SVGContainer,
@@ -15,7 +15,7 @@ import {
   loadSnapshot,
   TLAssetStore,
 } from 'tldraw';
-import { Pdf, PdfPage } from './PdfPicker';
+import { Pdf } from './PdfPicker';
 
 interface PdfEditorProps {
   type: 'pdf' | 'whiteboard';
