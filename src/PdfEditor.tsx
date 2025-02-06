@@ -47,12 +47,55 @@ const createAssetStore = (): TLAssetStore => ({
 
 export function PdfEditor({ type, pdf, path }: PdfEditorProps) {
   const [isInitialized, setIsInitialized] = useState(false);
+  const [isStateLoaded, setIsStateLoaded] = useState(false);
   const pathRef = useRef(path);
+  const editorRef = useRef<any>(null);
 
   // Update pathRef when path changes
   useEffect(() => {
     pathRef.current = path;
   }, [path]);
+
+  // Separate effect for loading state
+  useEffect(() => {
+    if (!isInitialized || !editorRef.current || !pathRef.current || isStateLoaded) {
+      return;
+    }
+
+    const loadState = async () => {
+      try {
+        const statePath = pathRef.current;
+        if (!statePath) {
+          throw new Error('No state path provided');
+        }
+
+        console.log('Loading state from:', statePath);
+        const response = await fetch(statePath);
+        if (!response.ok) {
+          throw new Error(`Failed to load state: ${response.status} ${response.statusText}`);
+        }
+        
+        const state = await response.json();
+        console.log('State loaded, applying to editor...');
+        loadSnapshot(editorRef.current.store, state);
+        console.log('State applied successfully');
+        setIsStateLoaded(true);
+        
+        // Notify parent that everything is loaded
+        window.parent.postMessage({ type: 'LOAD_COMPLETE' }, '*');
+      } catch (error) {
+        console.error('Failed to load state:', error);
+        // Still mark as loaded to prevent infinite retries
+        setIsStateLoaded(true);
+        window.parent.postMessage({ 
+          type: 'LOAD_ERROR', 
+          error: error instanceof Error ? error.message : 'Unknown error occurred'
+        }, '*');
+      }
+    };
+
+    loadState();
+  }, [isInitialized, isStateLoaded]);
 
   const components = useMemo<TLComponents>(
     () => ({
@@ -140,6 +183,7 @@ export function PdfEditor({ type, pdf, path }: PdfEditorProps) {
         assets={createAssetStore()}
         onMount={(editor) => {
           console.log('Editor mounted');
+          editorRef.current = editor;
 
           // Handle async initialization
           (async () => {
@@ -198,24 +242,13 @@ export function PdfEditor({ type, pdf, path }: PdfEditorProps) {
                 });
               }
 
-              // Then load state if available
-              if (pathRef.current && !isInitialized) {
-                console.log('Loading initial state from:', pathRef.current);
-                const response = await fetch(pathRef.current);
-                if (!response.ok) {
-                  throw new Error(`Failed to load state: ${response.status} ${response.statusText}`);
-                }
-                
-                const state = await response.json();
-                loadSnapshot(editor.store, state);
-                console.log('Initial state loaded successfully');
-                setIsInitialized(true);
-              }
-
-              // Notify parent that everything is loaded
-              window.parent.postMessage({ type: 'LOAD_COMPLETE' }, '*');
+              setIsInitialized(true);
             } catch (error) {
               console.error('Failed during initialization:', error);
+              window.parent.postMessage({ 
+                type: 'INIT_ERROR', 
+                error: error instanceof Error ? error.message : 'Unknown error occurred'
+              }, '*');
             }
           })();
         }}
