@@ -143,34 +143,7 @@ export function PdfEditor({ type, pdf, path }: PdfEditorProps) {
           // Handle async initialization
           (async () => {
             try {
-              // Try to load state first if available
-              if (pathRef.current) {
-                try {
-                  console.log('Loading initial state from:', pathRef.current);
-                  const response = await fetch(pathRef.current);
-                  if (response.ok) {
-                    const state = await response.json();
-                    loadSnapshot(editor.store, state);
-                    
-                    // Force a re-render and ensure shapes are visible
-                    editor.updateInstanceState({ isToolLocked: false });
-                    
-                    // Update viewport
-                    const allShapes = editor.getCurrentPageShapes();
-                    if (allShapes.length > 0) {
-                      editor.zoomToFit();
-                    }
-                    
-                    console.log('Initial state loaded successfully');
-                  } else {
-                    console.warn('Failed to load state, proceeding with PDF setup');
-                  }
-                } catch (error) {
-                  console.error('Error loading state:', error);
-                }
-              }
-
-              // Then set up PDF if we have one
+              // First set up PDF if we have one
               if (pdf && pdf.pages.length > 0) {
                 console.log('Setting up PDF pages...');
                 // Create assets and shapes for PDF pages
@@ -210,12 +183,6 @@ export function PdfEditor({ type, pdf, path }: PdfEditorProps) {
                   ),
                 ]);
 
-                // Send PDF pages to back
-                const pdfShapes = editor.getCurrentPageShapes().filter(shape => 
-                  pdf.pages.some(page => page.shapeId === shape.id)
-                );
-                editor.sendToBack(pdfShapes);
-
                 // Set up camera
                 const targetBounds = pdf.pages.reduce(
                   (acc, page) => acc.union(page.bounds),
@@ -231,6 +198,50 @@ export function PdfEditor({ type, pdf, path }: PdfEditorProps) {
                   isMobile = isMobileNow;
                   updateCameraBounds(editor, targetBounds, isMobile);
                 });
+              }
+
+              // Then load state if available
+              if (pathRef.current) {
+                try {
+                  console.log('Loading initial state from:', pathRef.current);
+                  const response = await fetch(pathRef.current);
+                  if (response.ok) {
+                    const state = await response.json();
+                    loadSnapshot(editor.store, state);
+                    console.log('Initial state loaded successfully');
+                  } else {
+                    console.warn('Failed to load state, proceeding without it');
+                  }
+                } catch (error) {
+                  console.error('Error loading state:', error);
+                }
+              }
+
+              // Finally, ensure correct z-index ordering
+              if (pdf?.pages) {
+                // Get all shapes
+                const allShapes = editor.getCurrentPageShapes();
+                
+                // Separate PDF shapes from drawings
+                const pdfShapes = allShapes.filter(shape => 
+                  pdf.pages.some(page => page.shapeId === shape.id)
+                );
+                const drawingShapes = allShapes.filter(shape => 
+                  !pdf.pages.some(page => page.shapeId === shape.id)
+                );
+
+                // First send PDF shapes to back
+                if (pdfShapes.length > 0) {
+                  editor.sendToBack(pdfShapes);
+                }
+
+                // Then bring drawings to front
+                if (drawingShapes.length > 0) {
+                  editor.bringToFront(drawingShapes);
+                }
+
+                // Update viewport to show everything
+                editor.zoomToFit();
               }
 
               // Notify parent that everything is loaded
