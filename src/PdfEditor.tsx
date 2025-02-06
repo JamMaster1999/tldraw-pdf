@@ -92,18 +92,13 @@ const createAssetStore = (): TLAssetStore => ({
 });
 
 export function PdfEditor({ type, pdf, path, state_url }: PdfEditorProps) {
-  const [lastChangeTime, setLastChangeTime] = useState<number>(0);
   const [countdown, setCountdown] = useState<number | null>(null);
-  const lastSaveTimeRef = useRef<number>(0);
   const saveRef = useRef<(() => Promise<void>) | null>(null);
 
   // Track changes
   const handleChange = useCallback((editor: any) => {
-    if (editor.currentPageId === 'page:page') {
-      setLastChangeTime(Date.now());
-      setCountdown(10); // Start countdown from 10 seconds
-      console.log('Drawing changed, will trigger save in 10 seconds');
-    }
+    console.log('handleChange called');
+    setCountdown(10); // Start countdown from 10 seconds
   }, []);
 
   // Auto-save effect
@@ -111,10 +106,8 @@ export function PdfEditor({ type, pdf, path, state_url }: PdfEditorProps) {
     if (!path || !saveRef.current) return;
 
     const checkAndSave = async () => {
-      const now = Date.now();
-      if (lastChangeTime > lastSaveTimeRef.current && now - lastSaveTimeRef.current >= 10000) {
-        console.log('Auto-saving drawings...');
-        lastSaveTimeRef.current = now;
+      if (countdown === 0) {
+        console.log('Countdown reached 0, saving...');
         try {
           const save = saveRef.current;
           if (save) {
@@ -124,13 +117,13 @@ export function PdfEditor({ type, pdf, path, state_url }: PdfEditorProps) {
           }
         } catch (error) {
           console.error('Auto-save failed:', error);
+          setCountdown(10); // Retry in 10 seconds if save failed
         }
       }
     };
 
-    const interval = setInterval(checkAndSave, 1000); // Check every second
-    return () => clearInterval(interval);
-  }, [path, lastChangeTime]);
+    checkAndSave();
+  }, [path, countdown]);
 
   // Countdown effect
   useEffect(() => {
@@ -140,8 +133,9 @@ export function PdfEditor({ type, pdf, path, state_url }: PdfEditorProps) {
       setCountdown(prev => {
         if (prev === null || prev <= 0) {
           clearInterval(interval);
-          return null;
+          return 0;
         }
+        console.log('Countdown:', prev - 1);
         return prev - 1;
       });
     }, 1000);
@@ -167,9 +161,11 @@ export function PdfEditor({ type, pdf, path, state_url }: PdfEditorProps) {
               color: 'white',
               padding: '8px 16px',
               borderRadius: '4px',
-              zIndex: 1000
+              zIndex: 1000,
+              fontSize: '14px',
+              fontWeight: 'bold'
             }}>
-              Saving in {countdown}s...
+              {countdown === 0 ? 'Saving...' : `Saving in ${countdown}s...`}
             </div>
           )}
         </>
@@ -340,8 +336,13 @@ export function PdfEditor({ type, pdf, path, state_url }: PdfEditorProps) {
                 }
               }
 
-              console.log('Detected user change:', update);
-              handleChange(editor);
+              // Only trigger handleChange if we're not already counting down
+              if (countdown === null) {
+                console.log('New change detected, starting countdown');
+                handleChange(editor);
+              } else {
+                console.log('Change detected but countdown already in progress');
+              }
             },
             { scope: 'document', source: 'user' }
           );
