@@ -239,9 +239,6 @@ export function PdfEditor({ type, pdf, path }: PdfEditorProps) {
                 if (drawingShapes.length > 0) {
                   editor.bringToFront(drawingShapes);
                 }
-
-                // Update viewport to show everything
-                editor.zoomToFit();
               }
 
               // Notify parent that everything is loaded
